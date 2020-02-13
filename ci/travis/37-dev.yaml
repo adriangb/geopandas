@@ -14,7 +14,7 @@ dependencies:
   - pytest-cov
   #- codecov
   # optional
-  - rtree
+  - rtree=0.9.4
   - matplotlib
   - descartes
   #- geopy
