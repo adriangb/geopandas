@@ -16,7 +16,7 @@ dependencies:
   - pytest-cov
   #- codecov
   # optional
-  - rtree=0.9.4
+  - rtree
   - matplotlib=2
   - descartes
   - mapclassify
