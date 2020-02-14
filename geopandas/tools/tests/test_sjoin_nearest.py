@@ -4,7 +4,8 @@ import pandas as pd
 from shapely.geometry import Point, Polygon, GeometryCollection
 
 import geopandas
-from geopandas import GeoDataFrame, GeoSeries, base, read_file, sjoin_nearest, sjoin
+from geopandas import GeoDataFrame, GeoSeries, base, read_file, sjoin, sjoin_nearest
+from geopandas.tools.sjoin import RTREE_VERSION
 
 from pandas.testing import assert_frame_equal
 import pytest
@@ -579,7 +580,8 @@ class TestSearchRadius:
         sjn_None_countries = set(sjn_None["country"])
         assert sjn_countries.issubset(sjn_None_countries)
 
-
+@pytest.mark.skipif([int(i) for i in RTREE_VERSION.split(".")] < [0, 9, 4], 
+                    reason="Rtree <= 0.9.4")
 @pytest.mark.skipif(not base.HAS_SINDEX, reason="Rtree absent, skipping")
 class TestMaxSearchNeighbors:
     def setup_method(self):

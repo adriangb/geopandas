@@ -35,7 +35,13 @@ import pandas as pd
 
 from shapely import prepared
 
-from geopandas import GeoDataFrame
+from geopandas import GeoDataFrame, base
+
+
+RTREE_VERSION = ""  # string to match expected type from rtree.__version__
+if base.HAS_SINDEX:
+    import rtree
+    RTREE_VERSION = rtree.__version__
 
 
 def sjoin(
@@ -268,8 +274,17 @@ def sjoin_nearest(
 
     # validate max_search_neighbors and search_radius params
     if max_search_neighbors is not None:
-        assert max_search_neighbors >= 1 and isinstance(max_search_neighbors, int), ""
+        assert max_search_neighbors >= 1 and isinstance(max_search_neighbors, int),\
         "max_search_neighbors must be an integer and >= 1"
+        # warn about using rtree < 0.9.4 and max_search_neighbors option
+        # see https://github.com/Toblerity/rtree/pull/141
+        
+        if [int(i) for i in RTREE_VERSION.split(".")] < [0, 9, 4]:
+            warn(
+                "Using an rtree version < 0.9.4 may cause inconsistent "
+                "results when using max_search_neighbors. Consider using a "
+                "large number or max_search_neighbors=None."
+            )
     if search_radius is not None:
         assert search_radius >= 0, "search_radius must be >=0"
 
@@ -297,6 +312,7 @@ def sjoin_nearest(
         # ensure indexes are int
         return (int(idx) for idx in neighbors if idx in in_radius)
 
+    # the accuracy of the spatial index is limited, so we need to manually
     # check each set of matches for actual distance
     l_idx = []
     r_idx = []
@@ -380,6 +396,10 @@ def _basic_checks(left_df, right_df):
                 "(%s != %s)" % (left_df.crs, right_df.crs)
             )
         )
+
+    # check that rtree is installed
+    if RTREE_VERSION is None:
+        raise RuntimeError("Spatial joins require `rtree`.")
 
 
 def _rename_indexes(left_df, right_df, lsuffix, rsuffix):
