@@ -9,7 +9,7 @@ import pytest
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="fails on AppVeyor")
-@pytest.mark.skipif(not base.HAS_SINDEX, reason="Rtree absent, skipping")
+@pytest.mark.skipif(not base.has_sindex(), reason="Spatial index absent, skipping")
 class TestSeriesSindex:
     def test_empty_geoseries(self):
 
@@ -28,6 +28,13 @@ class TestSeriesSindex:
 
         assert s.sindex is None
         assert s._sindex_generated is True
+
+    def test_empty_point_mixed_with_nonempty(self):
+        s = GeoSeries([Point(), Point(0, 0)])
+
+        assert s.sindex is not None
+        assert s._sindex_generated is True
+        assert s.sindex.size == 1
 
     def test_polygons(self):
         t1 = Polygon([(0, 0), (1, 0), (1, 1)])
@@ -54,7 +61,7 @@ class TestSeriesSindex:
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="fails on AppVeyor")
-@pytest.mark.skipif(not base.HAS_SINDEX, reason="Rtree absent, skipping")
+@pytest.mark.skipif(not base.has_sindex(), reason="Spatial index absent, skipping")
 class TestFrameSindex:
     def setup_method(self):
         data = {

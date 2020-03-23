@@ -1,5 +1,6 @@
 from distutils.version import LooseVersion
 import os
+import warnings
 
 import pandas as pd
 
@@ -15,9 +16,14 @@ PANDAS_GE_10 = str(pd.__version__) >= LooseVersion("0.26.0.dev")
 # -----------------------------------------------------------------------------
 # Shapely / PyGEOS compat
 # -----------------------------------------------------------------------------
-
+HAS_PYGEOS = None
 USE_PYGEOS = None
-PYGEOS_SHAPELY_COMPAT = None
+try:
+    import pygeos  # noqa
+
+    HAS_PYGEOS = True
+except ImportError:
+    HAS_PYGEOS = False
 
 
 def set_use_pygeos(val=None):
@@ -37,12 +43,8 @@ def set_use_pygeos(val=None):
         USE_PYGEOS = bool(val)
     else:
         if USE_PYGEOS is None:
-            try:
-                import pygeos  # noqa
 
-                USE_PYGEOS = True
-            except ImportError:
-                USE_PYGEOS = False
+            USE_PYGEOS = HAS_PYGEOS
 
             env_use_pygeos = os.getenv("USE_PYGEOS", None)
             if env_use_pygeos is not None:
@@ -53,8 +55,7 @@ def set_use_pygeos(val=None):
         try:
             import pygeos  # noqa
 
-            # validate the pygeos version
-            if not str(pygeos.__version__) >= LooseVersion("0.6"):
+            if not str(pygeos.__version__) >= LooseVersion("0.5"):
                 raise ImportError(
                     "PyGEOS >= 0.6 is required, version {0} is installed".format(
                         pygeos.__version__
@@ -89,3 +90,17 @@ def set_use_pygeos(val=None):
 
 
 set_use_pygeos()
+
+# -----------------------------------------------------------------------------
+# RTree compat
+# -----------------------------------------------------------------------------
+
+HAS_RTREE = None
+RTREE_GE_094 = False
+try:
+    import rtree  # noqa
+
+    HAS_RTREE = True
+    RTREE_GE_094 = str(rtree.__version__) >= LooseVersion("0.9.4")
+except ImportError:
+    HAS_RTREE = False

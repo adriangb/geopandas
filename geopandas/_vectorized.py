@@ -5,6 +5,7 @@ Uses PyGEOS if available/set, otherwise loops through Shapely geometries.
 
 """
 import warnings
+from functools import lru_cache
 
 import numpy as np
 
@@ -56,6 +57,7 @@ def _isna(value):
         return False
 
 
+@lru_cache(maxsize=2048, typed=False)
 def _pygeos_to_shapely(geom):
     if geom is None:
         return None
