@@ -1,15 +1,25 @@
 import sys
 
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, box
+from numpy.testing import assert_array_equal
 
 import geopandas
-from geopandas import GeoDataFrame, GeoSeries, base, read_file
+from geopandas import GeoDataFrame, GeoSeries, sindex, read_file
+from geopandas import _compat as compat
 
 import pytest
 
 
+@pytest.mark.skipif(sindex.has_sindex(), reason="Spatial index present, skipping")
+class TestNoSindex:
+    def test_no_sindex(self):
+        """Checks that a warning is given when no spatial index is present."""
+        with pytest.warns():
+            sindex.get_sindex_class()
+
+
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="fails on AppVeyor")
-@pytest.mark.skipif(not base.HAS_SINDEX, reason="Rtree absent, skipping")
+@pytest.mark.skipif(not sindex.has_sindex(), reason="Spatial index absent, skipping")
 class TestSeriesSindex:
     def test_empty_geoseries(self):
 
@@ -28,6 +38,13 @@ class TestSeriesSindex:
 
         assert s.sindex is None
         assert s._sindex_generated is True
+
+    def test_empty_point_mixed_with_nonempty(self):
+        s = GeoSeries([Point(), Point(0, 0)])
+
+        assert s.sindex is not None
+        assert s._sindex_generated is True
+        assert s.sindex.size == 1
 
     def test_polygons(self):
         t1 = Polygon([(0, 0), (1, 0), (1, 1)])
@@ -54,7 +71,7 @@ class TestSeriesSindex:
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="fails on AppVeyor")
-@pytest.mark.skipif(not base.HAS_SINDEX, reason="Rtree absent, skipping")
+@pytest.mark.skipif(not sindex.has_sindex(), reason="Spatial index absent, skipping")
 class TestFrameSindex:
     def setup_method(self):
         data = {
@@ -121,3 +138,208 @@ class TestJoinSindex:
         hits = tree.intersection((1012821.80, 229228.26), objects=True)
         res = [merged.loc[hit.object]["BoroName"] for hit in hits]
         assert res == ["Bronx", "Queens"]
+
+
+@pytest.mark.skipif(not sindex.has_sindex(), reason="Spatial index absent, skipping")
+class TestPygeosInterface:
+    def setup_method(self):
+        data = {
+            "A": range(6),
+            "B": range(-6, 0),
+            "location": [Point(x, y) for x, y in zip(range(5), range(5))]
+            + [box(10, 10, 20, 20)],  # include a box geometry
+        }
+        self.df = GeoDataFrame(data, geometry="location")
+        self.expected_size = len(data["location"])
+
+    @pytest.mark.parametrize(
+        "predicate, test_geom, expected",
+        (
+            (None, (-1, -1, -0.5, -0.5), []),
+            (None, (-0.5, -0.5, 0.5, 0.5), [0]),
+            (None, (0, 0, 1, 1), [0, 1]),
+            ("intersects", (-1, -1, -0.5, -0.5), []),
+            ("intersects", (-0.5, -0.5, 0.5, 0.5), [0]),
+            ("intersects", (0, 0, 1, 1), [0, 1]),
+            ("within", (0, 0, 1, 1), []),
+            ("within", (11, 11, 12, 12), [5]),
+            ("contains", (0, 0, 1, 1), []),
+            ("contains", (0.5, 0.5, 1.5, 1.5), [1]),
+            ("contains", (-1, -1, 2, 2), [0, 1]),
+        ),
+    )
+    def test_query(self, predicate, test_geom, expected):
+        # pass through GeoSeries to have GeoPandas
+        # determine if it should use shapely or pygeos geometry objects
+        test_geom = geopandas.GeoSeries([box(*test_geom)], index=["0"])
+        res = self.df.sindex.query(
+            test_geom.geometry.values.data[0], predicate=predicate
+        )
+        assert_array_equal(res, expected)
+
+    @pytest.mark.parametrize(
+        "test_geom, expected",
+        (
+            ((-1, -1, -0.5, -0.5), []),
+            ((-0.5, -0.5, 0.5, 0.5), [0]),
+            ((0, 0, 1, 1), [0, 1]),
+            ((0, 0), [0]),
+        ),
+    )
+    def test_intersection_bounds_tuple(self, test_geom, expected):
+        res = list(self.df.sindex.intersection(test_geom))
+        assert_array_equal(res, expected)
+
+    @pytest.mark.parametrize(
+        "test_geom", ((-1, -1, -0.5), -0.5, None, Point(0, 0),),
+    )
+    def test_intersection_invalid_bounds_tuple(self, test_geom):
+        if compat.USE_PYGEOS:
+            with pytest.raises(TypeError):
+                # we raise a useful TypeError
+                self.df.sindex.intersection(test_geom)
+        else:
+            with pytest.raises((TypeError, Exception)):
+                # catch a general exception
+                # rtree raises an RTreeError which we need to catch
+                self.df.sindex.intersection(test_geom)
+
+    @pytest.mark.parametrize(
+        "predicate, test_geom, expected",
+        (
+            (None, (-1, -1, -0.5, -0.5), [[], []]),
+            (None, (-0.5, -0.5, 0.5, 0.5), [[0], [0]]),
+            (None, (0, 0, 1, 1), [[0, 0], [0, 1]]),
+            ("intersects", (-1, -1, -0.5, -0.5), [[], []]),
+            ("intersects", (-0.5, -0.5, 0.5, 0.5), [[0], [0]]),
+            ("intersects", (0, 0, 1, 1), [[0, 0], [0, 1]]),
+            ("within", (0, 0, 1, 1), [[], []]),
+            ("within", (11, 11, 12, 12), [[0], [5]]),
+            ("contains", (0, 0, 1, 1), [[], []]),
+            ("contains", (0.5, 0.5, 1.5, 1.5), [[0], [1]]),
+            ("contains", (-1, -1, 2, 2), [[0, 0], [0, 1]]),
+        ),
+    )
+    def test_query_bulk(self, predicate, test_geom, expected):
+        # pass through GeoSeries to have GeoPandas
+        # determine if it should use shapely or pygeos geometry objects
+        test_geom = geopandas.GeoSeries([box(*test_geom)], index=["0"])
+        res = self.df.sindex.query_bulk(test_geom, predicate=predicate)
+        assert_array_equal(res, expected)
+
+    @pytest.mark.parametrize(
+        "predicate, test_geom, expected",
+        (
+            (None, (-1, -1, -0.5, -0.5), [[], []]),
+            (None, (-0.5, -0.5, 0.5, 0.5), [[0], [0]]),
+            (None, (0, 0, 1, 1), [[0, 0], [0, 1]]),
+            ("intersects", (-1, -1, -0.5, -0.5), [[], []]),
+            ("intersects", (-0.5, -0.5, 0.5, 0.5), [[0], [0]]),
+            ("intersects", (0, 0, 1, 1), [[0, 0], [0, 1]]),
+            ("within", (0, 0, 1, 1), [[], []]),
+            ("within", (11, 11, 12, 12), [[0], [5]]),
+            ("contains", (0, 0, 1, 1), [[], []]),
+            ("contains", (0.5, 0.5, 1.5, 1.5), [[0], [1]]),
+            ("contains", (-1, -1, 2, 2), [[0, 0], [0, 1]]),
+        ),
+    )
+    def test_query_bulk_array(self, predicate, test_geom, expected):
+        # pass through GeoSeries to have GeoPandas
+        # determine if it should use shapely or pygeos geometry objects
+        test_geom = geopandas.GeoSeries([box(*test_geom)], index=["0"])
+        # extract underlaying numpy array
+        test_geom = test_geom.geometry.values.data
+        res = self.df.sindex.query_bulk(test_geom, predicate=predicate)
+        assert_array_equal(res, expected)
+
+    @pytest.mark.parametrize(
+        "sort, expected",
+        (
+            (True, [[0, 0, 0], [0, 1, 2]]),
+            # False could be anything, at least we'll know if it changes
+            (False, [[0, 0, 0], [0, 1, 2]]),
+        ),
+    )
+    def test_query_sorting(self, sort, expected):
+        """Check that results don't depend on the order of geometries."""
+        # these geometries come from a reported issue:
+        # https://github.com/geopandas/geopandas/issues/1337
+        # there is no theoretical reason they were chosen
+        test_polys = GeoSeries([Polygon([(1, 1), (3, 1), (3, 3), (1, 3)])])
+        tree_polys = GeoSeries(
+            [
+                Polygon([(1, 1), (3, 1), (3, 3), (1, 3)]),
+                Polygon([(-1, 1), (1, 1), (1, 3), (-1, 3)]),
+                Polygon([(3, 3), (5, 3), (5, 5), (3, 5)]),
+            ]
+        )
+        expected = [0, 1, 2]
+
+        # pass through GeoSeries to have GeoPandas
+        # determine if it should use shapely or pygeos geometry objects
+        tree_df = geopandas.GeoDataFrame(geometry=tree_polys)
+        test_df = geopandas.GeoDataFrame(geometry=test_polys)
+
+        test_geo = test_df.geometry.values.data[0]
+        res = tree_df.sindex.query(test_geo, sort=sort)
+        try:
+            assert_array_equal(res, expected)
+        except AssertionError as e:
+            if not compat.USE_PYGEOS and sort is False:
+                pytest.xfail(
+                    "rtree results are known to be unordered, see "
+                    "https://github.com/geopandas/geopandas/issues/1337"
+                )
+            raise e
+
+    @pytest.mark.parametrize(
+        "sort, expected",
+        (
+            (True, [[0, 0, 0], [0, 1, 2]]),
+            # False could be anything, at least we'll know if it changes
+            (False, [[0, 0, 0], [0, 1, 2]]),
+        ),
+    )
+    def test_query_bulk_sorting(self, sort, expected):
+        """Check that results don't depend on the order of geometries."""
+        # these geometries come from a reported issue:
+        # https://github.com/geopandas/geopandas/issues/1337
+        # there is no theoretical reason they were chosen
+        test_polys = GeoSeries([Polygon([(1, 1), (3, 1), (3, 3), (1, 3)])])
+        tree_polys = GeoSeries(
+            [
+                Polygon([(1, 1), (3, 1), (3, 3), (1, 3)]),
+                Polygon([(-1, 1), (1, 1), (1, 3), (-1, 3)]),
+                Polygon([(3, 3), (5, 3), (5, 5), (3, 5)]),
+            ]
+        )
+
+        # pass through GeoSeries to have GeoPandas
+        # determine if it should use shapely or pygeos geometry objects
+        tree_df = geopandas.GeoDataFrame(geometry=tree_polys)
+        test_df = geopandas.GeoDataFrame(geometry=test_polys)
+
+        res = tree_df.sindex.query_bulk(test_df.geometry, sort=sort)
+        try:
+            assert_array_equal(res, expected)
+        except AssertionError as e:
+            if not compat.USE_PYGEOS and sort is False:
+                pytest.xfail(
+                    "rtree results are known to be unordered, see "
+                    "https://github.com/geopandas/geopandas/issues/1337"
+                )
+            raise e
+
+    def test_size(self):
+        assert self.df.sindex.size == self.expected_size
+
+    def test_is_empty(self):
+        # create empty tree
+        cls_ = sindex.get_sindex_class()
+        empty = geopandas.GeoSeries([])
+        tree = cls_(empty)
+        assert tree.is_empty
+        # create a non-empty tree
+        non_empty = geopandas.GeoSeries([Point(0, 0)])
+        tree = cls_(non_empty)
+        assert not tree.is_empty
