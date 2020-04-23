@@ -112,18 +112,13 @@ def sjoin(
         right_df.index = right_df.index.rename(index_right)
     right_df = right_df.reset_index()
 
-    # the definition of "is left_df within right_df"
-    # or "is left_df contained in right_df" is arbitrary
-    # for historical reasons, this is flipped in sjoin
-    flip = False
+    # the definition of "is [geometry from left_df] within [geometry from right_df]"
+    # vs is [geometry from right_df] within [geometry from left_df] is arbitrary
+    # for historical reasons, this logic is flipped in sjoin vs. pygeos query_bulk
     if op == "contains":
         op = "within"
     elif op == "within":
         op = "contains"
-        # within implemented as the inverse of contains; swap names
-        # left_df, right_df = right_df, left_df
-        # tree_idx_right = not tree_idx_right
-        flip = True
 
     r_idx = np.empty((0, 0))
     l_idx = np.empty((0, 0))
@@ -141,14 +136,6 @@ def sjoin(
     else:
         # when output from the join has no overlapping geometries
         result = pd.DataFrame(columns=["_key_left", "_key_right"], dtype=float)
-
-    if flip:
-        # within implemented as the inverse of contains; swap names
-        # left_df, right_df = right_df, left_df
-        # result = result.rename(
-        #     columns={"_key_left": "_key_right", "_key_right": "_key_left"}
-        # )
-        pass
 
     if how == "inner":
         result = result.set_index("_key_left")

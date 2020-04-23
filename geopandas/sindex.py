@@ -89,12 +89,11 @@ if compat.HAS_RTREE:
             geometry : shapely geometry
                 A single shapely geometry to query against the spatial index.
             predicate : {None, 'intersects', 'within', 'contains', 'overlaps', 'crosses', 'touches'}, optional
-                The predicate to use for testing geometries from the tree
-                that are within the input geometry's envelope.
-                See `pygeos.strtree` documentation for more details on
-                expected behavior of predicates.
+                If predicate is provided, a prepared version of the input geometry is tested using
+                the predicate function against each item in the index whose extent intersects the
+                envelope of the input geometry: predicate(geometry, tree_geometry).
             sort : bool, default False
-                Determines if the results should be sorted. If False, results are
+                If True, the results will be sorted in ascending order. If False, results are
                 often sorted but there is no guarantee.
 
             Returns
@@ -160,14 +159,13 @@ if compat.HAS_RTREE:
                 Accepts GeoPandas geometry iterables (GeoSeries, GeometryArray)
                 or a numpy array of PyGEOS geometries.
             predicate : {None, 'intersects', 'within', 'contains', 'overlaps', 'crosses', 'touches'}, optional
-                The predicate to use for testing geometries from the tree
-                that are within the input geometry's envelope.
-                See `pygeos.strtree` documentation for more details on
-                expected behavior of predicates.
+                If predicate is provided, a prepared version of the input geometry is tested using
+                the predicate function against each item in the index whose extent intersects the
+                envelope of the input geometry: predicate(geometry, tree_geometry).
             sort : bool, default False
-                Determines if the results should be sorted lexicographically using
+                If True, results sorted lexicographically using
                 geometry's indexes as the primary key and the sindex's indexes as the
-                secondary key.
+                secondary key. If False, no additional sorting is applied.
 
             Returns
             -------
@@ -198,6 +196,8 @@ if compat.HAS_RTREE:
 
 if compat.HAS_PYGEOS:
 
+    from geopandas import GeoSeries  # noqa
+    from geopandas.array import GeometryArray  # noqa
     from pygeos import STRtree, box, points, Geometry  # noqa
 
     class PyGEOSSTRTreeIndex(STRtree):
@@ -224,14 +224,13 @@ if compat.HAS_PYGEOS:
                 Accepts GeoPandas geometry iterables (GeoSeries, GeometryArray)
                 or a numpy array of PyGEOS geometries.
             predicate : {None, 'intersects', 'within', 'contains', 'overlaps', 'crosses', 'touches'}, optional
-                The predicate to use for testing geometries from the tree
-                that are within the input geometry's envelope.
-                See `pygeos.strtree` documentation for more details on
-                predicates.
+                If predicate is provided, a prepared version of the input geometry is tested using
+                the predicate function against each item in the index whose extent intersects the
+                envelope of the input geometry: predicate(geometry, tree_geometry).
             sort : bool, default False
-                Determines if the results should be sorted lexicographically using
+                If True, results sorted lexicographically using
                 geometry's indexes as the primary key and the sindex's indexes as the
-                secondary key.
+                secondary key. If False, no additional sorting is applied.
 
             Returns
             -------
@@ -243,13 +242,18 @@ if compat.HAS_PYGEOS:
             --------
             See PyGEOS.strtree documentation for more information.
             """  # noqa: E501
-            try:
-                # for GeoSeries or GeometryArray
-                geometry = geometry.geometry.values.data
-            except AttributeError:
-                # assume already a numpy array of pygeos geoms
-                pass
+
+            if isinstance(geometry, GeoSeries):
+                geometry = geometry.values.data
+            elif isinstance(geometry, GeometryArray):
+                geometry = geometry.data
+            elif not isinstance(geometry, np.ndarray):
+                raise ValueError(
+                    "`geometry` must be a GeoSeries, GeometryArray or numpy.ndarray"
+                )
+
             res = super().query_bulk(geometry, predicate)
+
             if not sort:
                 return res
             # sort by first array (geometry) and then second (tree)
@@ -265,12 +269,11 @@ if compat.HAS_PYGEOS:
             ----------
             geometry : single PyGEOS geometry
             predicate : {None, 'intersects', 'within', 'contains', 'overlaps', 'crosses', 'touches'}, optional
-                The predicate to use for testing geometries from the tree
-                that are within the input geometry's envelope.
-                See `pygeos.strtree` documentation for more details on
-                predicates.
+                If predicate is provided, a prepared version of the input geometry is tested using
+                the predicate function against each item in the index whose extent intersects the
+                envelope of the input geometry: predicate(geometry, tree_geometry).
             sort : bool, default False
-                Determines if the results should be sorted. If False, results are
+                If True, the results will be sorted in ascending order. If False, results are
                 often sorted but there is no guarantee.
 
             Returns
