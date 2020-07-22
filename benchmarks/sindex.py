@@ -19,6 +19,9 @@ def generate_test_df():
     return data
 
 
+a = "pointlesschange"
+
+
 class Bench:
 
     param_names = ["tree_geom_type"]
