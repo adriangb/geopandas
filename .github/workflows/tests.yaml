@@ -97,7 +97,7 @@ jobs:
 
       - name: Test with PostGIS
         shell: bash
-        if: contains(matrix.env, '38-latest-conda-forge.yaml') & contains(matrix.os, 'ubuntu')
+        if: contains(matrix.env, '38-latest-conda-forge.yaml') && contains(matrix.os, 'ubuntu')
         env:
           PGUSER: postgres
           PGPASSWORD: postgres
