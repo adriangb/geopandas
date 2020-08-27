@@ -48,13 +48,8 @@ jobs:
             os: windows-latest
             postgis: false
             dev: false
-          - env: ci/travis/38-latest-conda-forge.yaml
-            os: ubuntu-latest
-            postgis: true
-            dev: false
           - env: ci/travis/37-dev.yaml
             os: ubuntu-latest
-            postgis: false
             dev: true
 
     steps:
@@ -69,7 +64,7 @@ jobs:
       - name: Check and Log Environment
         shell: bash
         run: |
-          conda create -f ${{ matrix.env }}
+          conda env create -f ${{ matrix.env }}
           conda activate test
           python -V
           conda info
@@ -84,7 +79,7 @@ jobs:
           fi
 
       - name: Test without PyGEOS
-        shell: bash -l {0}
+        shell: bash
         continue-on-error: ${{ matrix.dev }}
         env:
           USE_PYGEOS: 0
@@ -92,7 +87,7 @@ jobs:
           pytest -v -r s -n auto --color=yes --cov=geopandas --cov-append --cov-report term-missing --cov-report xml geopandas/
 
       - name: Test with PyGEOS
-        shell: bash -l {0}
+        shell: bash
         continue-on-error: ${{ matrix.dev }}
         if: env.HAS_PYGEOS == 1
         env:
@@ -101,8 +96,8 @@ jobs:
           pytest -v -r s -n auto --color=yes --cov=geopandas --cov-append --cov-report term-missing --cov-report xml geopandas/
 
       - name: Test with PostGIS
-        shell: bash -l {0}
-        if: matrix.postgis == true
+        shell: bash
+        if: contains(matrix.env, '38-latest-conda-forge.yaml') & contains(matrix.os, 'ubuntu')
         env:
           PGUSER: postgres
           PGPASSWORD: postgres
