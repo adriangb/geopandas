@@ -55,16 +55,19 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: setup-conda
+      - name: Setup Conda
         uses: s-weigand/setup-conda@v1.0.4
         with:
           activate-conda: false
+
+      - name: Install Env
+        shell: bash
+        run: conda env create -f ${{ matrix.env }}
 
 
       - name: Check and Log Environment
         shell: bash
         run: |
-          conda env create -f ${{ matrix.env }}
           source activate test
           python -V
           conda info
