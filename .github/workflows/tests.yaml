@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           conda env create -f ${{ matrix.env }}
-          conda activate test
+          source activate test
           python -V
           conda info
           conda list 2>&1 | tee conda.txt
@@ -84,6 +84,7 @@ jobs:
         env:
           USE_PYGEOS: 0
         run: |
+          source activate test
           pytest -v -r s -n auto --color=yes --cov=geopandas --cov-append --cov-report term-missing --cov-report xml geopandas/
 
       - name: Test with PyGEOS
@@ -93,6 +94,7 @@ jobs:
         env:
           USE_PYGEOS: 1
         run: |
+          source activate test
           pytest -v -r s -n auto --color=yes --cov=geopandas --cov-append --cov-report term-missing --cov-report xml geopandas/
 
       - name: Test with PostGIS
@@ -103,6 +105,7 @@ jobs:
           PGPASSWORD: postgres
           PGHOST: "127.0.0.1"
         run: |
+          source activate test
           conda install postgis -c conda-forge
           source ci/travis/setup_postgres.sh
           pytest -v -r s -color=yes --cov=geopandas --cov-append --cov-report term-missing --cov-report xml geopandas/io/tests/test_sql.py | tee /dev/stderr | if grep SKIPPED >/dev/null;then echo "TESTS SKIPPED, FAILING" && exit 1;fi
